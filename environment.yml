@@ -1,0 +1,13 @@
+name: hw2_env
+
+dependencies:
+  - python=3.7
+  - pytorch
+  - torchvision
+  - pip
+  - pip:
+      - gdown
+      - numpy
+      - pandas
+      - opencv-python
+      - matplotlib

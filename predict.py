@@ -19,7 +19,7 @@ files = os.listdir(args.input_folder)
 bbox_pred = np.random.randint(0, high=224, size=(4, len(files)))
 proper_mask_pred = np.random.randint(2, size=len(files)).astype(np.bool)
 prediction_df = pd.DataFrame(zip(files, *bbox_pred, proper_mask_pred),
-                             columns=['filename', 'h', 'w', 'y', 'x', 'proper_mask'])
+                             columns=['filename', 'x', 'y', 'w', 'h', 'proper_mask'])
 ####
 
 # TODO - How to export prediction results
