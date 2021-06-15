@@ -17,13 +17,14 @@ class mask_dataset(Dataset):
     def __getitem__(self, index):
         img = self.image_id[index]
         img_items = img.strip(".jpg").split('__')
-        box = json.loads(img_items[1])
+        cx,cy,w,h = json.loads(img_items[1])
         label = [2] if img_items[2] == 'True' else [1]
         image_tensor = Image.open(os.path.join(self.path, img)).convert('RGB')
-        boxes = torch.FloatTensor(box)
+        bbox = [cx, cy, cx + w, cy + h]
+        bbox = torch.FloatTensor(bbox)
         labels = torch.LongTensor(label)
-        image, boxes, labels = transform(image_tensor, boxes, labels)
-        return image, boxes, labels
+        image, bbox, labels = transform(image_tensor, bbox, labels)
+        return image, bbox, labels
 
     def __len__(self):
         return len(self.image_id)
