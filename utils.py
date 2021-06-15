@@ -8,7 +8,7 @@ import torchvision.transforms.functional as FT
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Label map
-possible_labels = ['not_proper_mask','proper_mask','background']
+possible_labels = ['background','not_proper_mask','proper_mask']
 label_map = {k: v for v, k in enumerate(possible_labels)}
 rev_label_map = {v: k for k, v in label_map.items()}  # Inverse mapping
 

@@ -18,7 +18,7 @@ class mask_dataset(Dataset):
         img = self.image_id[index]
         img_items = img.strip(".jpg").split('__')
         box = json.loads(img_items[1])
-        label = [1] if img_items[2] == 'True' else [0]
+        label = [2] if img_items[2] == 'True' else [1]
         image_tensor = Image.open(os.path.join(self.path, img)).convert('RGB')
         boxes = torch.FloatTensor(box)
         labels = torch.LongTensor(label)
