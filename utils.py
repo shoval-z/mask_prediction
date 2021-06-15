@@ -651,3 +651,19 @@ def clip_gradient(optimizer, grad_clip):
         for param in group['params']:
             if param.grad is not None:
                 param.grad.data.clamp_(-grad_clip, grad_clip)
+
+def choose_left_box(image_boxes,image_scores,image_labels):
+    x_min = 300
+    best_box, best_label, best_score = None,None,None
+    for box, img_score, img_label in zip(image_boxes,image_scores,image_labels):
+        tmp_x_min = box[0]
+        if tmp_x_min<x_min:
+            x_min = tmp_x_min
+            best_box = box
+            best_label = img_label
+            best_score = img_score
+    return best_box, best_label, best_score
+
+
+
+

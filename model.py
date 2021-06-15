@@ -494,6 +494,7 @@ class SSD300(nn.Module):
                 image_scores.append(class_scores[1 - suppress])
 
             # If no object in any class is found, store a placeholder for 'background'
+            # TODO notic!
             if len(image_boxes) == 0:
                 image_boxes.append(torch.FloatTensor([[0., 0., 1., 1.]]).to(device))
                 image_labels.append(torch.LongTensor([0]).to(device))
@@ -512,7 +513,7 @@ class SSD300(nn.Module):
                 image_boxes = image_boxes[sort_ind][:top_k]  # (top_k, 4)
                 image_labels = image_labels[sort_ind][:top_k]  # (top_k)
 
-            #TODO choose only the left most item
+            image_boxes, image_labels, image_scores = choose_left_box(image_boxes,image_scores,image_labels)
 
             # Append to lists that store predicted boxes and scores for all images
             all_images_boxes.append(image_boxes)
