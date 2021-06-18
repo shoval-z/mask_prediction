@@ -12,6 +12,9 @@ class mask_dataset(Dataset):
         super(mask_dataset, self).__init__()
         self.path = f'/home/student/{dataset}'
         self.image_id = os.listdir(self.path)
+        self.image_sizes = list()
+
+
 
 
     def __getitem__(self, index):
@@ -23,8 +26,8 @@ class mask_dataset(Dataset):
         bbox = [cx, cy, cx + w, cy + h]
         bbox = torch.FloatTensor(bbox)
         labels = torch.LongTensor(label)
-        image, bbox, labels = transform(image_tensor, bbox, labels)
-        return image, bbox, labels
+        image, bbox, labels, origin_size = transform(image_tensor, bbox, labels)
+        return image, bbox, labels, origin_size
 
     def __len__(self):
         return len(self.image_id)

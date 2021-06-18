@@ -1,5 +1,5 @@
 from utils import *
-from datasets import PascalVOCDataset
+from dataset import mask_dataset
 from tqdm import tqdm
 from pprint import PrettyPrinter
 
@@ -12,22 +12,19 @@ keep_difficult = True  # difficult ground truth objects must always be considere
 batch_size = 64
 workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-checkpoint = './checkpoint_ssd300.pth.tar'
+checkpoint = '0_checkpoint_ssd300.pth.tar'
 
 # Load model checkpoint that is to be evaluated
-checkpoint = torch.load(checkpoint)
-model = checkpoint['model']
+model = torch.load(checkpoint)
 model = model.to(device)
 
 # Switch to eval mode
 model.eval()
 
 # Load test data
-test_dataset = PascalVOCDataset(data_folder,
-                                split='test',
-                                keep_difficult=keep_difficult)
+test_dataset = mask_dataset(dataset='test')
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
-                                          collate_fn=test_dataset.collate_fn, num_workers=workers, pin_memory=True)
+                                          num_workers=workers, pin_memory=True)
 
 
 def evaluate(test_loader, model):
@@ -46,11 +43,13 @@ def evaluate(test_loader, model):
     det_scores = list()
     true_boxes = list()
     true_labels = list()
-    true_difficulties = list()  # it is necessary to know which objects are 'difficult', see 'calculate_mAP' in utils.py
+
+    iou_scores = list()
+    accuracy_scores = list()
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, difficulties) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels, origin_size) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(device)  # (N, 3, 300, 300)
 
             # Forward prop.
@@ -65,22 +64,41 @@ def evaluate(test_loader, model):
             # Store this batch's results for mAP calculation
             boxes = [b.to(device) for b in boxes]
             labels = [l.to(device) for l in labels]
-            difficulties = [d.to(device) for d in difficulties]
 
-            det_boxes.extend(det_boxes_batch)
-            det_labels.extend(det_labels_batch)
-            det_scores.extend(det_scores_batch)
-            true_boxes.extend(boxes)
-            true_labels.extend(labels)
-            true_difficulties.extend(difficulties)
+            # det_boxes.extend(det_boxes_batch)
+            # det_labels.extend(det_labels_batch)
+            # det_scores.extend(det_scores_batch)
+            # true_boxes.extend(boxes)
+            # true_labels.extend(labels)
+
+            origin_size = origin_size.squeeze(1)
+
+            det_boxes_batch = torch.mul(torch.stack(det_boxes_batch), origin_size)
+            det_boxes_batch = xy_to_cxcy(det_boxes_batch)
+
+            boxes = torch.mul(torch.stack(boxes).squeeze(1), origin_size)
+            boxes = xy_to_cxcy(boxes)
+
+            iou = [calc_iou(det_b,true_b) for det_b,true_b in zip(det_boxes_batch,boxes)]
+            iou_scores.extend(iou)
+
+            det_labels_batch = (torch.stack(det_labels_batch) == 2).int()
+            labels = (torch.stack(labels).squeeze(1) == 2).int()
+            accuracy_scores.extend((det_labels_batch == labels).int())
+
+
+        accuracy = np.mean(accuracy_scores)
+        iou = np.mean(iou)
+        print(accuracy,iou)
+
+
+
+
 
         # Calculate mAP
-        APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties)
+        # APs, mAP = calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, true_difficulties)
 
-    # Print AP for each class
-    pp.pprint(APs)
 
-    print('\nMean Average Precision (mAP): %.3f' % mAP)
 
 
 if __name__ == '__main__':

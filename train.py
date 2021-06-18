@@ -63,7 +63,7 @@ def main():
     # Calculate total number of epochs to train and the epochs to decay learning rate at (i.e. convert iterations to epochs)
     # To convert iterations to epochs, divide iterations by the number of iterations per epoch
     # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
-    epochs = 10
+    epochs = 1
     decay_lr_at = [it // (len(train_dataset) // 32) for it in decay_lr_at] ## [160,200]
 
     # Epochs
@@ -81,6 +81,7 @@ def main():
               epoch=epoch)
 
         # Save checkpoint
+        print('saving model')
         save_model(epoch, model)
 
 
@@ -102,7 +103,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
     start = time.time()
 
     # Batches
-    for i, (images, boxes, labels) in enumerate(train_loader):
+    for i, (images, boxes, labels, _) in enumerate(train_loader):
+        if i % 50 == 0:
+            print('[{0}/{1}]'.format(i, len(train_loader)))
         data_time.update(time.time() - start)
 
         # Move to default device

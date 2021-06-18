@@ -2,6 +2,7 @@ import json
 import os
 import torch
 import random
+import numpy as np
 import xml.etree.ElementTree as ET
 import torchvision.transforms.functional as FT
 
@@ -267,6 +268,22 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
     return average_precisions, mean_average_precision
 
+def calc_iou(bbox_a, bbox_b):
+    """
+    Calculate intersection over union (IoU) between two bounding boxes with a (x, y, w, h) format.
+    :param bbox_a: Bounding box A. 4-tuple/list.
+    :param bbox_b: Bounding box B. 4-tuple/list.
+    :return: Intersection over union (IoU) between bbox_a and bbox_b, between 0 and 1.
+    """
+    x1, y1, w1, h1 = bbox_a
+    x2, y2, w2, h2 = bbox_b
+    w_intersection = min(x1 + w1, x2 + w2) - max(x1, x2)
+    h_intersection = min(y1 + h1, y2 + h2) - max(y1, y2)
+    if w_intersection <= 0.0 or h_intersection <= 0.0:  # No overlap
+        return 0.0
+    intersection = w_intersection * h_intersection
+    union = w1 * h1 + w2 * h2 - intersection    # Union = Total Area - Intersection
+    return intersection / union
 
 def xy_to_cxcy(xy):
     """
@@ -519,7 +536,7 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
         new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
         new_boxes = new_boxes * new_dims
 
-    return new_image, new_boxes
+    return new_image, new_boxes, old_dims
 
 
 def photometric_distort(image):
@@ -572,7 +589,7 @@ def transform(image, boxes, labels):
     new_labels = labels
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
-    new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))
+    new_image, new_boxes, origin_size = resize(new_image, new_boxes, dims=(300, 300))
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)
@@ -580,7 +597,7 @@ def transform(image, boxes, labels):
     # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
     new_image = FT.normalize(new_image, mean=mean, std=std)
 
-    return new_image, new_boxes, new_labels
+    return new_image, new_boxes, new_labels, origin_size
 
 
 def adjust_learning_rate(optimizer, scale):
@@ -594,20 +611,22 @@ def adjust_learning_rate(optimizer, scale):
     print("DECAYING learning rate.\n The new LR is %f\n" % (optimizer.param_groups[1]['lr'],))
 
 
-def accuracy(scores, targets, k):
-    """
-    Computes top-k accuracy, from predicted and true labels.
-    :param scores: scores from the model
-    :param targets: true labels
-    :param k: k in top-k accuracy
-    :return: top-k accuracy
-    """
-    batch_size = targets.size(0)
-    _, ind = scores.topk(k, 1, True, True)
-    correct = ind.eq(targets.view(-1, 1).expand_as(ind))
-    correct_total = correct.view(-1).float().sum()  # 0D tensor
-    return correct_total.item() * (100.0 / batch_size)
+# def accuracy(scores, targets, k):
+#     """
+#     Computes top-k accuracy, from predicted and true labels.
+#     :param scores: scores from the model
+#     :param targets: true labels
+#     :param k: k in top-k accuracy
+#     :return: top-k accuracy
+#     """
+#     batch_size = targets.size(0)
+#     _, ind = scores.topk(k, 1, True, True)
+#     correct = ind.eq(targets.view(-1, 1).expand_as(ind))
+#     correct_total = correct.view(-1).float().sum()  # 0D tensor
+#     return correct_total.item() * (100.0 / batch_size)
 
+def accuracy(predicted,real):
+    pass
 
 def save_model(epoch, model):
     """
