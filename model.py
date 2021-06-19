@@ -4,6 +4,10 @@ import torch.nn.functional as F
 from math import sqrt
 from itertools import product as product
 import torchvision
+import warnings
+
+
+warnings.filterwarnings("ignore", category=UserWarning)  # to ignore the .to(dtype=torch.uint8) warning message
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -482,7 +486,7 @@ class SSD300(nn.Module):
 
                     # Suppress boxes whose overlaps (with this box) are greater than maximum overlap
                     # Find such boxes and update suppress indices
-                    suppress = torch.max(suppress, overlap[box] > max_overlap)
+                    suppress = torch.max(suppress, (overlap[box] > max_overlap).to(dtype=torch.uint8))
                     # The max operation retains previously suppressed boxes, like an 'OR' operation
 
                     # Don't suppress this box, even though it has an overlap of 1 with itself

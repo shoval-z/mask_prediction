@@ -9,10 +9,10 @@ pp = PrettyPrinter()
 # Parameters
 data_folder = './'
 keep_difficult = True  # difficult ground truth objects must always be considered in mAP calculation, because these objects DO exist!
-batch_size = 64
+batch_size = 8
 workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-checkpoint = '0_checkpoint_ssd300.pth.tar'
+checkpoint = '4_checkpoint_ssd300.pth.tar'
 
 # Load model checkpoint that is to be evaluated
 model = torch.load(checkpoint)
@@ -37,19 +37,12 @@ def evaluate(test_loader, model):
     # Make sure it's in eval mode
     model.eval()
 
-    # Lists to store detected and true boxes, labels, scores
-    det_boxes = list()
-    det_labels = list()
-    det_scores = list()
-    true_boxes = list()
-    true_labels = list()
-
     iou_scores = list()
     accuracy_scores = list()
 
     with torch.no_grad():
         # Batches
-        for i, (images, boxes, labels, origin_size) in enumerate(tqdm(test_loader, desc='Evaluating')):
+        for i, (images, boxes, labels) in enumerate(tqdm(test_loader, desc='Evaluating')):
             images = images.to(device)  # (N, 3, 300, 300)
 
             # Forward prop.
@@ -65,13 +58,8 @@ def evaluate(test_loader, model):
             boxes = [b.to(device) for b in boxes]
             labels = [l.to(device) for l in labels]
 
-            # det_boxes.extend(det_boxes_batch)
-            # det_labels.extend(det_labels_batch)
-            # det_scores.extend(det_scores_batch)
-            # true_boxes.extend(boxes)
-            # true_labels.extend(labels)
-
-            origin_size = origin_size.squeeze(1)
+            origin_size = test_dataset.image_sizes[i]
+            origin_size = origin_size.squeeze(1).to(device)
 
             det_boxes_batch = torch.mul(torch.stack(det_boxes_batch), origin_size)
             det_boxes_batch = xy_to_cxcy(det_boxes_batch)
@@ -82,14 +70,15 @@ def evaluate(test_loader, model):
             iou = [calc_iou(det_b,true_b) for det_b,true_b in zip(det_boxes_batch,boxes)]
             iou_scores.extend(iou)
 
-            det_labels_batch = (torch.stack(det_labels_batch) == 2).int()
-            labels = (torch.stack(labels).squeeze(1) == 2).int()
+            det_labels_batch = torch.unsqueeze((torch.stack(det_labels_batch) == 2).int(),0)
+            labels = torch.unsqueeze((torch.stack(labels).squeeze(1) == 2).int(),0)
             accuracy_scores.extend((det_labels_batch == labels).int())
 
 
-        accuracy = np.mean(accuracy_scores)
+        accuracy = np.mean(torch.cat(accuracy_scores).cpu().numpy())
         iou = np.mean(iou)
-        print(accuracy,iou)
+        print('accuracy:', accuracy)
+        print('iou:', iou)
 
 
 

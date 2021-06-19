@@ -16,7 +16,7 @@ n_classes = len(label_map)  # number of different types of objects
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
-batch_size = 64  # batch size
+batch_size = 8  # batch size
 iterations = 120000  # number of iterations to train
 workers = 4  # number of workers for loading data in the DataLoader
 print_freq = 200  # print training status every __ batches
@@ -56,16 +56,15 @@ def main():
 
     # Custom dataloaders
     train_dataset = mask_dataset(dataset='train')
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
                                                num_workers=workers,
                                                pin_memory=True)  # note that we're passing the collate function here
 
     # Calculate total number of epochs to train and the epochs to decay learning rate at (i.e. convert iterations to epochs)
     # To convert iterations to epochs, divide iterations by the number of iterations per epoch
     # The paper trains for 120,000 iterations with a batch size of 32, decays after 80,000 and 100,000 iterations
-    epochs = 1
+    epochs = 10
     decay_lr_at = [it // (len(train_dataset) // 32) for it in decay_lr_at] ## [160,200]
-
     # Epochs
     for epoch in range(epochs):
 
@@ -103,8 +102,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
     start = time.time()
 
     # Batches
-    for i, (images, boxes, labels, _) in enumerate(train_loader):
-        if i % 50 == 0:
+    for i, (name,images, boxes, labels) in enumerate(train_loader):
+        if i % 10 == 0:
             print('[{0}/{1}]'.format(i, len(train_loader)))
         data_time.update(time.time() - start)
 
@@ -142,7 +141,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'.format(epoch, i, len(train_loader),
                                                                   batch_time=batch_time,
                                                                   data_time=data_time, loss=losses))
-    del predicted_locs, predicted_scores, images, boxes, labels  # free some memory since their histories may be stored
+    del predicted_locs, predicted_scores, images, boxes, labels  # free some memory
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ name: hw2_env
 dependencies:
   - python=3.7
   - pytorch
+  - pytorch-gpu
   - torchvision
   - pip
   - pip:

@@ -536,7 +536,7 @@ def resize(image, boxes, dims=(300, 300), return_percent_coords=True):
         new_dims = torch.FloatTensor([dims[1], dims[0], dims[1], dims[0]]).unsqueeze(0)
         new_boxes = new_boxes * new_dims
 
-    return new_image, new_boxes, old_dims
+    return new_image, new_boxes
 
 
 def photometric_distort(image):
@@ -589,7 +589,7 @@ def transform(image, boxes, labels):
     new_labels = labels
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
-    new_image, new_boxes, origin_size = resize(new_image, new_boxes, dims=(300, 300))
+    new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)
@@ -597,7 +597,7 @@ def transform(image, boxes, labels):
     # Normalize by mean and standard deviation of ImageNet data that our base VGG was trained on
     new_image = FT.normalize(new_image, mean=mean, std=std)
 
-    return new_image, new_boxes, new_labels, origin_size
+    return new_image, new_boxes, new_labels
 
 
 def adjust_learning_rate(optimizer, scale):
