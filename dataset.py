@@ -31,7 +31,7 @@ class mask_dataset(Dataset):
                     bbox[idx] = img_dim
             bbox = torch.FloatTensor(bbox)
             label = torch.LongTensor(label)
-            image, bbox, label = transform(image, bbox, label)
+            image, bbox, label = transform(image, bbox, label,dataset=dataset)
 
             self.items.append((image, bbox, label))
 
