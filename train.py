@@ -16,7 +16,7 @@ n_classes = len(label_map)  # number of different types of objects
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Learning parameters
-batch_size = 8  # batch size
+batch_size = 16  # batch size
 iterations = 120000  # number of iterations to train
 workers = 4  # number of workers for loading data in the DataLoader
 print_freq = 200  # print training status every __ batches
@@ -47,8 +47,10 @@ def main():
                 biases.append(param)
             else:
                 not_biases.append(param)
-    optimizer = torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
-                                    lr=lr, momentum=momentum, weight_decay=weight_decay)
+    # optimizer = torch.optim.SGD(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
+    #                                 lr=lr, momentum=momentum, weight_decay=weight_decay)
+    optimizer = torch.optim.Adam(params=[{'params': biases, 'lr': 2 * lr}, {'params': not_biases}],
+                                    lr=lr, weight_decay=weight_decay)
 
     # Move to default device
     model = model.to(device)
@@ -56,7 +58,7 @@ def main():
 
     # Custom dataloaders
     train_dataset = mask_dataset(dataset='train')
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=workers,
                                                pin_memory=True)  # note that we're passing the collate function here
 
@@ -102,9 +104,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
     start = time.time()
 
     # Batches
-    for i, (name,images, boxes, labels) in enumerate(train_loader):
-        if i % 10 == 0:
-            print('[{0}/{1}]'.format(i, len(train_loader)))
+    for i, (images, boxes, labels) in enumerate(train_loader):
         data_time.update(time.time() - start)
 
         # Move to default device

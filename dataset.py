@@ -31,10 +31,9 @@ class mask_dataset(Dataset):
                     bbox[idx] = img_dim
             bbox = torch.FloatTensor(bbox)
             label = torch.LongTensor(label)
-            print(image.width, image.height, bbox)
             image, bbox, label = transform(image, bbox, label)
 
-            self.items.append((img_items[0],image, bbox, label))
+            self.items.append((image, bbox, label))
 
     def __getitem__(self, index):
         return self.items[index]
