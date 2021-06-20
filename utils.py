@@ -580,8 +580,10 @@ def transform(image, boxes, labels,dataset):
     """
     # Mean and standard deviation of ImageNet data
     # see: https://pytorch.org/docs/stable/torchvision/models.html
-    mean = [0.485, 0.456, 0.406]
-    std = [0.229, 0.224, 0.225]
+    # mean = [0.485, 0.456, 0.406]
+    # std = [0.229, 0.224, 0.225]
+    mean = [0.1723, 0.1535, 0.3206]
+    std = [1.1535, 1.1641, 1.1382]
 
     new_image = image
     new_boxes = boxes

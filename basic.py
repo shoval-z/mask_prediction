@@ -17,12 +17,18 @@ class BB_model(nn.Module):
         super(BB_model, self).__init__()
         resnet = models.resnet34(pretrained=False)
         layers = list(resnet.children())[:8]
+        # layers = list(resnet.children())
         self.features1 = nn.Sequential(*layers[:6])
         self.features2 = nn.Sequential(*layers[6:])
         self.classifier = nn.Sequential(nn.BatchNorm1d(512), nn.Linear(512, 3))
         self.bb = nn.Sequential(nn.BatchNorm1d(512), nn.Linear(512, 4))
 
+        # self.layers = nn.Sequential(*layers)
+        # self.classifier = nn.Sequential(nn.BatchNorm1d(1000), nn.Linear(1000, 3))
+        # self.bb = nn.Sequential(nn.BatchNorm1d(1000), nn.Linear(1000, 4))
+
     def forward(self, x):
+        # x = self.features(x)
         x = self.features1(x) # x =[batch_size, 128, 38, 38]
         x = self.features2(x) #x = [batch_size, 512, 10, 10]
         x = F.relu(x)
@@ -32,7 +38,7 @@ class BB_model(nn.Module):
         bb = self.bb(x) #[batch_size, 4]
         return classifier, bb
 
-def val_metrics(model, device, valid_dl,test_dataset, C=1000):
+def val_metrics(model, device, valid_dl,test_dataset, C=1):
     model.eval()
     total = 0
     sum_loss = 0
@@ -74,7 +80,7 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1000):
     return sum_iou/total, correct/total, sum_loss/total
 
 
-def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000, init_epoch=0):
+def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1, init_epoch=0):
     loss_list, iou_list, acc_list = list(), list(), list()
     for i in range(epochs):
         i += init_epoch
@@ -82,7 +88,7 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000
         total = 0
         sum_loss = 0
         sum_iou = 0
-        accuracy =0
+        accuracy = 0
         for idx, (x, y_bb, y_class) in enumerate(train_dl): #x = [batch_size, RGB, 300, 300]
             batch = y_class.shape[0]
             x = x.to(device).float()
@@ -117,7 +123,7 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000
             sum_iou += np.sum(tmp_iou)
 
         print('saving model')
-        save_model(f'{i}_basic_model', model)
+        save_model(f'{i}__basic_model_new_mean_std', model)
 
         train_loss = sum_loss / total
         train_acc = accuracy / total
@@ -138,10 +144,10 @@ def main():
     batch_size = 8  # batch size
     workers = 4
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    checkpoint = f'19_basic_model_checkpoint_ssd300.pth.tar'
-    model = torch.load(checkpoint)
-    model = model.to(device)
-    # model = BB_model().to(device)
+    # checkpoint = f'19_basic_model_checkpoint_ssd300.pth.tar'
+    # model = torch.load(checkpoint)
+    # model = model.to(device)
+    model = BB_model().to(device)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = torch.optim.Adam(parameters, lr=0.006)
     update_optimizer(optimizer, 0.001)
@@ -151,7 +157,7 @@ def main():
                                                num_workers=workers,
                                                pin_memory=True)
 
-    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=10, C=1,init_epoch=20)
+    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=20, C=1,init_epoch=0)
     print('train iou:', iou_list)
     print('train accuracy:', acc_list)
     print('train loss:', loss_list)
@@ -163,8 +169,8 @@ def main():
                                                pin_memory=True)
 
     loss_list, iou_list, acc_list = list(), list(), list()
-    for i in range(19,30):
-        checkpoint = f'{i}_basic_model_checkpoint_ssd300.pth.tar'
+    for i in range(30):
+        checkpoint = f'{i}_basic_model_new_mean_std_checkpoint_ssd300.pth.tar'
         # checkpoint = torch.load(checkpoint)
         model = torch.load(checkpoint)
         # model = BB_model()
