@@ -414,7 +414,7 @@ def expand(image, boxes, filler):
     return new_image, new_boxes
 
 
-def random_crop(image, boxes, labels, difficulties):
+def random_crop(image, boxes, labels):
     """
     Performs a random crop in the manner stated in the paper. Helps to learn to detect larger and partial objects.
     Note that some objects may be cut out entirely.
@@ -422,8 +422,7 @@ def random_crop(image, boxes, labels, difficulties):
     :param image: image, a tensor of dimensions (3, original_h, original_w)
     :param boxes: bounding boxes in boundary coordinates, a tensor of dimensions (n_objects, 4)
     :param labels: labels of objects, a tensor of dimensions (n_objects)
-    :param difficulties: difficulties of detection of these objects, a tensor of dimensions (n_objects)
-    :return: cropped image, updated bounding box coordinates, updated labels, updated difficulties
+    :return: cropped image, updated bounding box coordinates, updated labels
     """
     original_h = image.size(1)
     original_w = image.size(2)
@@ -434,7 +433,7 @@ def random_crop(image, boxes, labels, difficulties):
 
         # If not cropping
         if min_overlap is None:
-            return image, boxes, labels, difficulties
+            return image, boxes, labels
 
         # Try up to 50 times for this choice of minimum overlap
         # This isn't mentioned in the paper, of course, but 50 is chosen in paper authors' original Caffe repo
@@ -486,7 +485,6 @@ def random_crop(image, boxes, labels, difficulties):
             # Discard bounding boxes that don't meet this criterion
             new_boxes = boxes[centers_in_crop, :]
             new_labels = labels[centers_in_crop]
-            new_difficulties = difficulties[centers_in_crop]
 
             # Calculate bounding boxes' new coordinates in the crop
             new_boxes[:, :2] = torch.max(new_boxes[:, :2], crop[:2])  # crop[:2] is [left, top]
@@ -494,7 +492,7 @@ def random_crop(image, boxes, labels, difficulties):
             new_boxes[:, 2:] = torch.min(new_boxes[:, 2:], crop[2:])  # crop[2:] is [right, bottom]
             new_boxes[:, 2:] -= crop[:2]
 
-            return new_image, new_boxes, new_labels, new_difficulties
+            return new_image, new_boxes, new_labels
 
 
 def flip(image, boxes):
@@ -508,12 +506,12 @@ def flip(image, boxes):
     new_image = FT.hflip(image)
 
     # Flip boxes
-    boxes = torch.unsqueeze(boxes, 0)
+    # boxes = torch.unsqueeze(boxes, 0)
     new_boxes = boxes
     new_boxes[:, 0] = image.width - boxes[:, 0] - 1
     new_boxes[:, 2] = image.width - boxes[:, 2] - 1
     new_boxes = new_boxes[:, [2, 1, 0, 3]]
-    new_boxes = torch.squeeze(new_boxes, 0)
+    # new_boxes = torch.squeeze(new_boxes, 0)
     return new_image, new_boxes
 
 
@@ -580,7 +578,7 @@ def transform(image, boxes, labels,dataset):
     :param split: one of 'TRAIN' or 'TEST', since different sets of transformations are applied
     :return: transformed image, transformed bounding box coordinates, transformed labels, transformed difficulties
     """
-    # Mean and standard deviation of ImageNet data that our base VGG from torchvision was trained on
+    # Mean and standard deviation of ImageNet data
     # see: https://pytorch.org/docs/stable/torchvision/models.html
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -592,7 +590,21 @@ def transform(image, boxes, labels,dataset):
     #Augmentations
     if dataset == 'train':
         new_image = photometric_distort(new_image)
-        # new_image = FT.to_tensor(new_image)
+
+        new_image = FT.to_tensor(new_image)
+
+        # Expand image (zoom out) with a 50% chance - helpful for training detection of small objects
+        # Fill surrounding space with the mean of ImageNet data that our base VGG was trained on
+        if random.random() < 0.5:
+            new_image, new_boxes = expand(new_image, boxes, filler=mean)
+
+        # Randomly crop image (zoom in)
+        new_image, new_boxes, new_labels,  = random_crop(new_image, new_boxes, new_labels)
+
+        # Convert Torch tensor to PIL image
+        new_image = FT.to_pil_image(new_image)
+
+
         if random.random() < 0.5:
             new_image, new_boxes = flip(new_image, new_boxes)
 
