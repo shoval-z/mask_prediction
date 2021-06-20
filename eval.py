@@ -2,6 +2,7 @@ from utils import *
 from dataset import mask_dataset
 from tqdm import tqdm
 from pprint import PrettyPrinter
+from model import SSD300
 
 # Good formatting when printing the APs for each class and mAP
 pp = PrettyPrinter()
@@ -15,7 +16,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 checkpoint = '4_checkpoint_ssd300.pth.tar'
 
 # Load model checkpoint that is to be evaluated
-model = torch.load(checkpoint)
+checkpoint = torch.load(checkpoint)
+model = SSD300(n_classes=3)
+model.load_state_dict(checkpoint['state_dict'])
 model = model.to(device)
 
 # Switch to eval mode
