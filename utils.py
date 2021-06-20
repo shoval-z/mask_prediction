@@ -508,11 +508,12 @@ def flip(image, boxes):
     new_image = FT.hflip(image)
 
     # Flip boxes
+    boxes = torch.unsqueeze(boxes, 0)
     new_boxes = boxes
     new_boxes[:, 0] = image.width - boxes[:, 0] - 1
     new_boxes[:, 2] = image.width - boxes[:, 2] - 1
     new_boxes = new_boxes[:, [2, 1, 0, 3]]
-
+    new_boxes = torch.squeeze(new_boxes, 0)
     return new_image, new_boxes
 
 
@@ -589,11 +590,11 @@ def transform(image, boxes, labels,dataset):
     new_labels = labels
 
     #Augmentations
-    # if dataset == 'train':
-    #     new_image = photometric_distort(new_image)
-    #     # new_image = FT.to_tensor(new_image)
-    #     if random.random() < 0.5:
-    #         new_image, new_boxes = flip(new_image, new_boxes)
+    if dataset == 'train':
+        new_image = photometric_distort(new_image)
+        # new_image = FT.to_tensor(new_image)
+        if random.random() < 0.5:
+            new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
     new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))

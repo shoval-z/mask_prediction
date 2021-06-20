@@ -13,7 +13,7 @@ keep_difficult = True  # difficult ground truth objects must always be considere
 batch_size = 8
 workers = 4
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-checkpoint = '4_checkpoint_ssd300.pth.tar'
+checkpoint = '2_checkpoint_ssd300.pth.tar'
 
 # Load model checkpoint that is to be evaluated
 checkpoint = torch.load(checkpoint)
@@ -53,7 +53,7 @@ def evaluate(test_loader, model):
 
             # Detect objects in SSD output
             det_boxes_batch, det_labels_batch, det_scores_batch = model.detect_objects(predicted_locs, predicted_scores,
-                                                                                       min_score=0.01, max_overlap=0.45,
+                                                                                       min_score=0.05, max_overlap=0.45,
                                                                                        top_k=200)
             # Evaluation MUST be at min_score=0.01, max_overlap=0.45, top_k=200 for fair comparision with the paper's results and other repos
 
