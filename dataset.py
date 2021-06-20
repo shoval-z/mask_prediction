@@ -39,7 +39,7 @@ class mask_dataset(Dataset):
     def __getitem__(self, index):
         if self.dataset == 'train':
             image, bbox, label = self.items[index]
-            return transform(image, bbox, label, dataset=self.dataset)
+            return transform(image.copy(), torch.clone(bbox), torch.clone(label), dataset=self.dataset)
         else:
             return self.items[index]
         # img = self.image_id[index]

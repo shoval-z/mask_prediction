@@ -74,9 +74,10 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1000):
     return sum_iou/total, correct/total, sum_loss/total
 
 
-def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000):
+def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000, init_epoch=0):
     loss_list, iou_list, acc_list = list(), list(), list()
     for i in range(epochs):
+        i += init_epoch
         model.train()
         total = 0
         sum_loss = 0
@@ -137,8 +138,10 @@ def main():
     batch_size = 8  # batch size
     workers = 4
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = BB_model().to(device)
+    checkpoint = f'19_basic_model_checkpoint_ssd300.pth.tar'
+    model = torch.load(checkpoint)
+    model = model.to(device)
+    # model = BB_model().to(device)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = torch.optim.Adam(parameters, lr=0.006)
     update_optimizer(optimizer, 0.001)
@@ -148,7 +151,7 @@ def main():
                                                num_workers=workers,
                                                pin_memory=True)
 
-    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=20, C=1)
+    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=10, C=1,init_epoch=20)
     print('train iou:', iou_list)
     print('train accuracy:', acc_list)
     print('train loss:', loss_list)
@@ -160,11 +163,12 @@ def main():
                                                pin_memory=True)
 
     loss_list, iou_list, acc_list = list(), list(), list()
-    for i in range(20):
+    for i in range(19,30):
         checkpoint = f'{i}_basic_model_checkpoint_ssd300.pth.tar'
-        checkpoint = torch.load(checkpoint)
-        model = BB_model()
-        model.load_state_dict(checkpoint['state_dict'])
+        # checkpoint = torch.load(checkpoint)
+        model = torch.load(checkpoint)
+        # model = BB_model()
+        # model.load_state_dict(checkpoint['state_dict'])
         model = model.to(device)
         test_iou, test_acc, test_loss = val_metrics(model, device, valid_dl=test_loader, test_dataset=test_dataset,
                                                     C=1)
