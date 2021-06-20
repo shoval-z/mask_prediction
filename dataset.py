@@ -8,9 +8,10 @@ from PIL import Image
 
 
 class mask_dataset(Dataset):
-    def __init__(self, dataset='train'):
+    def __init__(self, dataset):
         super(mask_dataset, self).__init__()
         self.path = f'/home/student/{dataset}'
+        self.dataset = dataset
         self.image_id = os.listdir(self.path)
         self.image_sizes = list()
         self.items = list()
@@ -31,12 +32,16 @@ class mask_dataset(Dataset):
                     bbox[idx] = img_dim
             bbox = torch.FloatTensor(bbox)
             label = torch.LongTensor(label)
-            image, bbox, label = transform(image, bbox, label,dataset=dataset)
-
+            if self.dataset == 'test':
+                image, bbox, label = transform(image, bbox, label,dataset=self.dataset)
             self.items.append((image, bbox, label))
 
     def __getitem__(self, index):
-        return self.items[index]
+        if self.dataset == 'train':
+            image, bbox, label = self.items[index]
+            return transform(image, bbox, label, dataset=self.dataset)
+        else:
+            return self.items[index]
         # img = self.image_id[index]
         # img_items = img.strip(".jpg").split('__')
         # cx,cy,w,h = json.loads(img_items[1])

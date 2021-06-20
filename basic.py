@@ -6,6 +6,10 @@ from dataset import mask_dataset
 import numpy as np
 from utils import save_model
 from utils import xy_to_cxcy,calc_iou
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning)  # to ignore the .to(dtype=torch.uint8) warning message
+
 
 
 class BB_model(nn.Module):
@@ -50,7 +54,7 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1000):
         correct += pred.eq(y_class).sum().item()
         sum_loss += loss.item()
 
-        y_bb = [b.to(device) for b in y_bb]
+        # y_bb = [b.to(device) for b in y_bb]
         # y_class = [l.to(device) for l in y_class]
 
         origin_size = test_dataset.image_sizes[idx]
@@ -59,7 +63,7 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1000):
         out_bb = torch.mul(out_bb, origin_size)
         out_bb = xy_to_cxcy(out_bb)
 
-        y_bb = torch.mul(torch.stack(y_bb).squeeze(1), origin_size)
+        y_bb = torch.mul(y_bb.squeeze(1), origin_size)
         y_bb = xy_to_cxcy(y_bb)
 
         tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
@@ -70,7 +74,8 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1000):
     return sum_iou/total, correct/total, sum_loss/total
 
 
-def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=1000):
+def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1000):
+    loss_list, iou_list, acc_list = list(), list(), list()
     for i in range(epochs):
         model.train()
         total = 0
@@ -103,7 +108,7 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=10
             out_bb = torch.mul(out_bb, origin_size)
             out_bb = xy_to_cxcy(out_bb)
 
-            y_bb = torch.mul(torch.stack(y_bb).squeeze(1), origin_size)
+            y_bb = torch.mul(y_bb.squeeze(1), origin_size)
             y_bb = xy_to_cxcy(y_bb)
 
             tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
@@ -116,9 +121,12 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=10
         train_loss = sum_loss / total
         train_acc = accuracy / total
         train_iou = sum_iou / total
-        print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (
+        print("for epoch: %f \t train_iou %.3f,train_accuracy %.3f,train_loss %.3f  " % (
         i, train_iou, train_acc, train_loss))
-
+        loss_list.append(train_loss)
+        iou_list.append(train_iou)
+        acc_list.append(train_acc)
+    return iou_list, acc_list, loss_list
 
 def update_optimizer(optimizer, lr):
     for i, param_group in enumerate(optimizer.param_groups):
@@ -140,7 +148,10 @@ def main():
                                                num_workers=workers,
                                                pin_memory=True)
 
-    train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=15)
+    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=20, C=1)
+    print('train iou:', iou_list)
+    print('train accuracy:', acc_list)
+    print('train loss:', loss_list)
     del train_loader, train_dataset
 
     test_dataset = mask_dataset(dataset='test')
@@ -148,16 +159,23 @@ def main():
                                                num_workers=workers,
                                                pin_memory=True)
 
-    for i in range(15):
+    loss_list, iou_list, acc_list = list(), list(), list()
+    for i in range(20):
         checkpoint = f'{i}_basic_model_checkpoint_ssd300.pth.tar'
         checkpoint = torch.load(checkpoint)
         model = BB_model()
         model.load_state_dict(checkpoint['state_dict'])
         model = model.to(device)
         test_iou, test_acc, test_loss = val_metrics(model, device, valid_dl=test_loader, test_dataset=test_dataset,
-                                                    C=1000)
+                                                    C=1)
         print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (i, test_iou, test_acc, test_loss))
+        loss_list.append(test_loss)
+        iou_list.append(test_iou)
+        acc_list.append(test_acc)
         del model
+    print('test iou:', iou_list)
+    print('test accuracy:', acc_list)
+    print('test loss:', loss_list)
 
 if __name__ == '__main__':
     main()

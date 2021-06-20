@@ -429,7 +429,7 @@ def random_crop(image, boxes, labels):
     # Keep choosing a minimum overlap until a successful crop is made
     while True:
         # Randomly draw the value for minimum overlap
-        min_overlap = random.choice([.1, .3, .5, .7, .9, None])  # 'None' refers to no cropping
+        min_overlap = random.choice([.5, .7, .9, None])  # 'None' refers to no cropping
 
         # If not cropping
         if min_overlap is None:
@@ -493,6 +493,7 @@ def random_crop(image, boxes, labels):
             new_boxes[:, 2:] -= crop[:2]
 
             return new_image, new_boxes, new_labels
+        return image, boxes, labels
 
 
 def flip(image, boxes):
