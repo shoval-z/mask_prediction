@@ -153,6 +153,9 @@ def main():
         checkpoint = torch.load(checkpoint)
         model = BB_model()
         model.load_state_dict(checkpoint['state_dict'])
+        aa=1
+        b = aa-1
+        print(b)
         model = model.to(device)
         test_iou, test_acc, test_loss = val_metrics(model, device, valid_dl=test_loader, test_dataset=test_dataset,
                                                     C=1000)
