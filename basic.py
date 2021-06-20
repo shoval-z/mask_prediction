@@ -40,16 +40,16 @@ def val_metrics(model, device, valid_dl,test_dataset ,C=1000):
         y_class = y_class.to(device)
         y_bb = y_bb.to(device).float()
         out_class, out_bb = model(x)
-        loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
-        loss_bb = F.l1_loss(out_bb, y_bb.squeeze(1), reduction="none").sum(1)
-        loss_bb = loss_bb.sum()
-        loss = loss_class + loss_bb/C
+        # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
+        # loss_bb = F.l1_loss(out_bb, y_bb.squeeze(1), reduction="none").sum(1)
+        # loss_bb = loss_bb.sum()
+        # loss = loss_class + loss_bb/C
         _, pred = torch.max(out_class, 1)
         pred = (pred == 2).float()
         y_class = (y_class == 2).float().squeeze(1)
 
         correct += pred.eq(y_class).sum().item()
-        sum_loss += loss.item()
+        # sum_loss += loss.item()
         y_bb = [b.to(device) for b in y_bb]
         # y_class = [l.to(device) for l in y_class]
 
@@ -65,19 +65,18 @@ def val_metrics(model, device, valid_dl,test_dataset ,C=1000):
         tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
         sum_iou += np.sum(tmp_iou)
         total += batch
-    return sum_iou/total, correct/total, sum_loss/total
+    return sum_iou/total, correct/total
 
 
-def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=1000):
+def train_epocs(model,device, optimizer, train_dl, test_dl, epochs=10,C=1000):
     idx = 0
     print('start train')
     for i in range(epochs):
         model.train()
         total = 0
         sum_loss = 0
-        sum_iou = 0
         accuracy =0
-        for idx, (x, y_bb, y_class) in enumerate(train_dl): #x = [batch_size, RGB, 300, 300]
+        for x, y_bb, y_class in train_dl: #x = [batch_size, RGB, 300, 300]
             batch = y_class.shape[0]
             x = x.to(device).float()
             y_class = y_class.to(device)
@@ -90,7 +89,7 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=10
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # idx += 1
+            idx += 1
             total += batch
             sum_loss += loss.item()
             _, pred = torch.max(out_class, 1)
@@ -98,27 +97,15 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs=10,C=10
             y_class = (y_class==2).float().squeeze(1)
             accuracy += pred.eq(y_class).sum().item()
 
-            origin_size = train_dataset.image_sizes[idx]
-            origin_size = origin_size.squeeze(1).to(device)
-
-            out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
-
-            y_bb = torch.mul(torch.stack(y_bb).squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
-
-            tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
-                       zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
-            sum_iou += np.sum(tmp_iou)
-
         print('saving model')
         save_model(f'{i}_basic_model', model)
 
         train_loss = sum_loss/total
         train_acc = accuracy/total
-        train_iou = sum_iou/total
-        print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (i, train_iou, train_acc,train_loss))
+        # test_loss, test_acc = val_metrics(model,device, test_dl, C)
+        print("for epoch: %i \t train_loss %.3f train_accuracy %.3f  " % (i, train_loss, train_acc))
 
+        # print("for epoch: %f \t train_loss %.3f train_accuracy %.3f \t test_loss %.3f,test_accuracy %.3f  " % (i, train_loss, train_acc,test_loss, test_acc))
 
 def main():
     # Learning parameters
@@ -133,7 +120,7 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=workers,
                                                pin_memory=True)
-    train_epocs(model, device, optimizer, train_loader,train_dataset=train_dataset, epochs=15)
+    train_epocs(model, device, optimizer, train_loader,test_dl=None, epochs=15)
     del train_loader,train_dataset
 
 
@@ -148,8 +135,8 @@ def main():
         model = BB_model()
         model.load_state_dict(checkpoint['state_dict'])
         model = model.to(device)
-        test_iou, test_acc, test_loss = val_metrics(model, device, valid_dl=test_loader,test_dataset=test_dataset,C=1000)
-        print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (i, test_iou, test_acc,test_loss))
+        test_iou, test_acc = val_metrics(model, device, valid_dl=test_loader,test_dataset=test_dataset,C=1000)
+        print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f  " % (i, test_iou, test_acc))
         del model
 
 if __name__ == '__main__':
