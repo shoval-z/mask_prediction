@@ -27,9 +27,9 @@ class mask_dataset(Dataset):
                 torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0))
             label = [2] if img_items[2] == 'True' else [1]
             bbox = [cx, cy, cx + w, cy + h]
-            for idx, (b_item,img_dim) in enumerate(zip(bbox,[image.width, image.height, image.width, image.height])):
-                if b_item > img_dim:
-                    bbox[idx] = img_dim
+            # for idx, (b_item,img_dim) in enumerate(zip(bbox,[image.width, image.height, image.width, image.height])):
+            #     if b_item > img_dim:
+            #         bbox[idx] = img_dim
             bbox = torch.FloatTensor(bbox)
             label = torch.LongTensor(label)
             if self.dataset == 'test':

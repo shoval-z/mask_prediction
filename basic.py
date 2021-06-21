@@ -16,6 +16,8 @@ class BB_model(nn.Module):
     def __init__(self):
         super(BB_model, self).__init__()
         resnet = models.resnet34(pretrained=False)
+        resnet152 = models.resnet152(pretrained=True)
+        inception = models.inception_v3(pretrained=False)
         layers = list(resnet.children())[:8]
         # layers = list(resnet.children())
         self.features1 = nn.Sequential(*layers[:6])

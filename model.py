@@ -546,9 +546,66 @@ class MultiBoxLoss(nn.Module):
         self.smooth_l1 = nn.L1Loss(reduction='none') #TODO reduction='none'?
         self.cross_entropy = nn.CrossEntropyLoss(reduce=False)
 
+    def forward_not_working(self, predicted_locs, predicted_scores, boxes, labels):
+
+        batch_size = predicted_locs.size(0)
+        n_priors = self.priors_cxcy.size(0)
+        n_classes = predicted_scores.size(2)
+
+        assert n_priors == predicted_locs.size(1) == predicted_scores.size(1)
+
+        true_locs = torch.zeros((batch_size, n_priors, 4), dtype=torch.float).to(device)  # (N, 8732, 4)
+        true_classes = torch.zeros((batch_size, n_priors), dtype=torch.long).to(device)  # (N, 8732)
+
+        # For each image
+        for i in range(batch_size):
+            n_objects = boxes[i].size(0)
+
+            overlap = find_jaccard_overlap(boxes[i],
+                                           self.priors_xy)  # (n_objects, 8732)
+
+            # For each prior, find the object that has the maximum overlap
+            overlap_for_each_prior, object_for_each_prior = overlap.max(dim=0)  # (8732)
+
+            # We don't want a situation where an object is not represented in our positive (non-background) priors -
+            # 1. An object might not be the best object for all priors, and is therefore not in object_for_each_prior.
+            # 2. All priors with the object may be assigned as background based on the threshold (0.5).
+
+            # To remedy this -
+            # First, find the prior that has the maximum overlap for each object.
+            _, prior_for_each_object = overlap.max(dim=1)  # (N_o)
+
+            # Then, assign each object to the corresponding maximum-overlap-prior. (This fixes 1.)
+            object_for_each_prior[prior_for_each_object] = torch.LongTensor(range(n_objects)).to(device)
+
+            # To ensure these priors qualify, artificially give them an overlap of greater than 0.5. (This fixes 2.)
+            overlap_for_each_prior[prior_for_each_object] = 1.
+
+            # Labels for each prior
+            label_for_each_prior = labels[i][object_for_each_prior]  # (8732)
+            # Set priors whose overlaps with objects are less than the threshold to be background (no object)
+            label_for_each_prior[overlap_for_each_prior < self.threshold] = 0  # (8732)
+
+            # Store
+            true_classes[i] = label_for_each_prior
+
+            # Encode center-size object coordinates into the form we regressed predicted boxes to
+            true_locs[i] = cxcy_to_gcxgcy(xy_to_cxcy(boxes[i][object_for_each_prior]), self.priors_cxcy)  # (8732, 4)
+
+
+        predicted_scores_softmax = F.softmax(predicted_scores, dim=2)  # (N, 8732, n_classes)
+        boxes = torch.cat(boxes).repeat(8732, 1)
+        loss_bb = self.smooth_l1(torch.t(torch.mul(torch.t(predicted_locs),
+                                           torch.tensor(predicted_scores_softmax, dtype=torch.float))),
+                         torch.t(torch.mul(torch.t(torch.tensor(boxes, dtype=torch.float)),
+                                           torch.tensor(predicted_scores_softmax, dtype=torch.float))))
+
+        loss_y = self.cross_entropy(predicted_scores.view(-1, n_classes), true_classes.view(-1))
+
+        return loss_bb + loss_y
+
+
     def forward(self, predicted_locs, predicted_scores, boxes, labels):
-        pass
-    def forward_old(self, predicted_locs, predicted_scores, boxes, labels):
         """
         Forward propagation.
         :param predicted_locs: predicted locations/boxes w.r.t the 8732 prior boxes, a tensor of dimensions (N, 8732, 4)
