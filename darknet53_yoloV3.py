@@ -358,9 +358,8 @@ def main():
 
     _, _,_, real_lst, pred_lst = val_metrics(model, device, test_loader, test_dataset, C=1)
     c_m = confusion_matrix(real_lst, pred_lst, labels=["Proper mask", "Not Proper mask"])
-    ax = sns.heatmap(c_m, linewidths=.5,cmap="YlGnBu")
+    sns.heatmap(c_m, linewidths=.5,cmap="YlGnBu")
     plt.show()
-
 
 
 if __name__ == '__main__':
