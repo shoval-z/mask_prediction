@@ -580,10 +580,10 @@ def transform(image, boxes, labels,dataset):
     """
     # Mean and standard deviation of ImageNet data
     # see: https://pytorch.org/docs/stable/torchvision/models.html
-    # mean = [0.485, 0.456, 0.406]
-    # std = [0.229, 0.224, 0.225]
-    mean = [0.1723, 0.1535, 0.3206]
-    std = [1.1535, 1.1641, 1.1382]
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+    # mean = [0.1723, 0.1535, 0.3206]
+    # std = [1.1535, 1.1641, 1.1382]
 
     new_image = image
     new_boxes = boxes
@@ -612,7 +612,7 @@ def transform(image, boxes, labels,dataset):
             new_image, new_boxes = flip(new_image, new_boxes)
 
     # Resize image to (300, 300) - this also converts absolute boundary coordinates to their fractional form
-    new_image, new_boxes = resize(new_image, new_boxes, dims=(300, 300))
+    new_image, new_boxes = resize(new_image, new_boxes, dims=(240, 240))
 
     # Convert PIL image to Torch tensor
     new_image = FT.to_tensor(new_image)
@@ -660,6 +660,12 @@ def save_model(epoch, model):
     """
     filename = f'{epoch}_checkpoint_ssd300.pth.tar'
     torch.save(model, filename)
+
+    # state = {'model': model,
+    #          'optimizer': optimizer}
+    # filename = 'checkpoint_ssd300.pth.tar'
+    # torch.save(state, filename)
+
 
 
 class AverageMeter(object):
