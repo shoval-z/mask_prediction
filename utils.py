@@ -5,11 +5,15 @@ import random
 import numpy as np
 import xml.etree.ElementTree as ET
 import torchvision.transforms.functional as FT
+import cv2
+import json
+import matplotlib.pyplot as plt
+from matplotlib import patches
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Label map
-possible_labels = ['background','not_proper_mask','proper_mask']
+possible_labels = ['background', 'not_proper_mask', 'proper_mask']
 label_map = {k: v for v, k in enumerate(possible_labels)}
 rev_label_map = {v: k for k, v in label_map.items()}  # Inverse mapping
 
@@ -268,6 +272,7 @@ def calculate_mAP(det_boxes, det_labels, det_scores, true_boxes, true_labels, tr
 
     return average_precisions, mean_average_precision
 
+
 def calc_iou(bbox_a, bbox_b):
     """
     Calculate intersection over union (IoU) between two bounding boxes with a (x, y, w, h) format.
@@ -282,8 +287,9 @@ def calc_iou(bbox_a, bbox_b):
     if w_intersection <= 0.0 or h_intersection <= 0.0:  # No overlap
         return 0.0
     intersection = w_intersection * h_intersection
-    union = w1 * h1 + w2 * h2 - intersection    # Union = Total Area - Intersection
+    union = w1 * h1 + w2 * h2 - intersection  # Union = Total Area - Intersection
     return intersection / union
+
 
 def xy_to_cxcy(xy):
     """
@@ -568,7 +574,7 @@ def photometric_distort(image):
     return new_image
 
 
-def transform(image, boxes, labels,dataset):
+def transform(image, boxes, labels, dataset):
     """
     Apply the transformations above.
     :param image: image, a PIL Image
@@ -591,7 +597,8 @@ def transform(image, boxes, labels,dataset):
 
     if dataset == 'TRAIN':
         # A series of photometric distortions in random order, each with 50% chance of occurrence, as in Caffe repo
-        new_image = photometric_distort(new_image)
+        if random.random() < 0.5:
+            new_image = photometric_distort(new_image)
 
         # Convert PIL image to Torch tensor
         new_image = FT.to_tensor(new_image)
@@ -602,7 +609,8 @@ def transform(image, boxes, labels,dataset):
             new_image, new_boxes = expand(new_image, boxes, filler=mean)
 
         # Randomly crop image (zoom in)
-        new_image, new_boxes, new_labels, new_difficulties = random_crop(new_image, new_boxes, new_labels)
+        if random.random() < 0.5:
+            new_image, new_boxes, new_labels, new_difficulties = random_crop(new_image, new_boxes, new_labels)
 
         # Convert Torch tensor to PIL image
         new_image = FT.to_pil_image(new_image)
@@ -648,8 +656,9 @@ def adjust_learning_rate(optimizer, scale):
 #     correct_total = correct.view(-1).float().sum()  # 0D tensor
 #     return correct_total.item() * (100.0 / batch_size)
 
-def accuracy(predicted,real):
+def accuracy(predicted, real):
     pass
+
 
 def save_model(epoch, model):
     """
@@ -665,7 +674,6 @@ def save_model(epoch, model):
     #          'optimizer': optimizer}
     # filename = 'checkpoint_ssd300.pth.tar'
     # torch.save(state, filename)
-
 
 
 class AverageMeter(object):
@@ -700,12 +708,13 @@ def clip_gradient(optimizer, grad_clip):
             if param.grad is not None:
                 param.grad.data.clamp_(-grad_clip, grad_clip)
 
-def choose_left_box(image_boxes,image_scores,image_labels):
+
+def choose_left_box(image_boxes, image_scores, image_labels):
     x_min = 300
-    best_box, best_label, best_score = None,None,None
-    for box, img_score, img_label in zip(image_boxes,image_scores,image_labels):
+    best_box, best_label, best_score = None, None, None
+    for box, img_score, img_label in zip(image_boxes, image_scores, image_labels):
         tmp_x_min = box[0]
-        if tmp_x_min<x_min:
+        if tmp_x_min < x_min:
             x_min = tmp_x_min
             best_box = box
             best_label = img_label
@@ -713,5 +722,30 @@ def choose_left_box(image_boxes,image_scores,image_labels):
     return best_box, best_label, best_score
 
 
-
-
+def plot_image(filename, predicted_box, prediction):
+    image_id, bbox, proper_mask = filename.strip(".jpg").split("__")
+    bbox = json.loads(bbox)
+    proper_mask = True if proper_mask.lower() == "true" else False
+    # Load image
+    im = cv2.imread(os.path.join('/home/student/test', filename))
+    # BGR to RGB
+    im = im[:, :, ::-1]
+    # Ground truth bbox
+    x1, y1, w1, h1 = bbox
+    # Predicted bbox
+    x2, y2, w2, h2 = predicted_box
+    # Calculate IoU
+    iou = calc_iou(bbox, (x2, y2, w2, h2))
+    # Plot image and bboxes
+    fig, ax = plt.subplots()
+    ax.imshow(im)
+    rect = patches.Rectangle((x1, y1), w1, h1,
+                             linewidth=2, edgecolor='g', facecolor='none', label='ground-truth')
+    ax.add_patch(rect)
+    rect = patches.Rectangle((x2, y2), w2, h2,
+                             linewidth=2, edgecolor='b', facecolor='none', label='predicted')
+    ax.add_patch(rect)
+    fig.suptitle(f"proper_mask={proper_mask}, predicted={prediction}, IoU={iou:.2f}")
+    ax.axis('off')
+    fig.legend()
+    plt.show()

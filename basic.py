@@ -156,8 +156,7 @@ def main():
 
     # model = BB_model().to(device)
     # parameters = filter(lambda p: p.requires_grad, model.parameters())
-    # optimizer = torch.optim.Adam(parameters, lr=0.006)
-    # update_optimizer(optimizer, 0.001)
+    # optimizer = torch.optim.Adam(parameters, lr=0.001)
     #
     # train_dataset = mask_dataset(dataset='train')
     # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,

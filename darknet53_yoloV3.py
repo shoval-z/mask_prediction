@@ -7,6 +7,9 @@ import numpy as np
 from utils import save_model
 from utils import xy_to_cxcy,calc_iou
 import warnings
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=UserWarning)  # to ignore the .to(dtype=torch.uint8) warning message
 
@@ -129,6 +132,7 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1, i
 
 def val_metrics(model, device, valid_dl,test_dataset, C=1):
     print('strat eval')
+    pred_lst, real_lst = [],[]
     model.eval()
     total = 0
     sum_loss = 0
@@ -167,18 +171,20 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1):
 
             # y_bb = [b.to(device) for b in y_bb]
             # y_class = [l.to(device) for l in y_class]
-
+            real_lst.extend(y_class)
+            pred_lst.extend(pred)
             tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
                        zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
             sum_iou += np.sum(tmp_iou)
 
             total += batch
-    return sum_iou/total, correct/total, sum_loss/total
+    return sum_iou/total, correct/total, sum_loss/total, real_lst, pred_lst
 
 def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_loader, test_dataset, epochs=50,):
     print('start training')
     model.train()
     train_loss_list, train_iou_list, train_acc_list = list(), list(), list()
+    test_loss_list, test_iou_list, test_acc_list = list(), list(), list()
     loss_bb = torch.nn.L1Loss()
     loss_class = torch.nn.BCELoss()
     for i in range(epochs):
@@ -207,7 +213,7 @@ def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_lo
 
             # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
             loss = loss_bb(out_bb, y_bb.squeeze(1))
-            loss += 2*(loss_class(out_class, y_class))
+            loss += (loss_class(out_class, y_class))
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -240,13 +246,12 @@ def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_lo
         total = 0
         sum_loss = 0
         sum_iou = 0
-        correct = 0
-        test_loss_list, test_iou_list, test_acc_list = list(), list(), list()
+        accuracy = 0
         loss_bb = torch.nn.L1Loss()
         loss_class = torch.nn.BCELoss()
         with torch.no_grad():
             for idx, (x, y_bb, y_class) in enumerate(test_loader):
-                origin_size = train_dataset.image_sizes[idx]
+                origin_size = test_dataset.image_sizes[idx]
                 origin_size = origin_size.squeeze(1).to(device)
 
                 batch = y_class.shape[0]
@@ -264,7 +269,7 @@ def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_lo
 
                 # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
                 loss = loss_bb(out_bb, y_bb.squeeze(1))
-                loss += 2 * (loss_class(out_class, y_class))
+                loss += (loss_class(out_class, y_class))
                 total += batch
                 sum_loss += loss.item()
                 # _, pred = torch.max(out_class, 1)
@@ -292,6 +297,109 @@ def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_lo
         print('test_acc=', test_acc_list)
         print('test_loss=', test_loss_list)
 
+def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_dataset,test_loader, test_dataset, epoch):
+    print('start training')
+    model.train()
+    loss_bb = torch.nn.L1Loss()
+    loss_class = torch.nn.BCELoss()
+    model.train()
+    total = 0
+    sum_loss = 0
+    sum_iou = 0
+    accuracy = 0
+    for idx, (x, y_bb, y_class) in enumerate(train_loader): #x = [batch_size, RGB, 300, 300]
+
+        origin_size = train_dataset.image_sizes[idx]
+        origin_size = origin_size.squeeze(1).to(device)
+
+        batch = y_class.shape[0]
+        x = x.to(device).float()
+        y_class = y_class.to(device)
+        y_class = (y_class == 2).squeeze(1).float()
+        y_bb = y_bb.to(device).float()
+        out_class, out_bb = model(x)
+
+        out_bb = torch.mul(out_bb, origin_size)
+        out_bb = xy_to_cxcy(out_bb)
+
+        y_bb = torch.mul(y_bb.squeeze(1), origin_size)
+        y_bb = xy_to_cxcy(y_bb)
+
+        # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
+        loss = loss_bb(out_bb, y_bb.squeeze(1))
+        loss += (loss_class(out_class, y_class))
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        total += batch
+        sum_loss += loss.item()
+        # _, pred = torch.max(out_class, 1)
+        pred = (out_class > 0.5).float()
+        # y_class = (y_class == 2).float().squeeze(1)
+        accuracy += pred.eq(y_class).sum().item()
+
+        tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
+                   zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
+        sum_iou += np.sum(tmp_iou)
+
+    print('saving model')
+    save_model(f'{epoch}_darknet53', model)
+
+    train_loss = sum_loss / total
+    train_acc = accuracy / total
+    train_iou = sum_iou / total
+    print("for epoch: %f \t train_iou %.3f,train_accuracy %.3f,train_loss %.3f  " % (
+        epoch, train_iou, train_acc, train_loss))
+
+    ## eval
+    print('strat eval')
+    model.eval()
+    total = 0
+    sum_loss = 0
+    sum_iou = 0
+    accuracy = 0
+    loss_bb = torch.nn.L1Loss()
+    loss_class = torch.nn.BCELoss()
+    with torch.no_grad():
+        for idx, (x, y_bb, y_class) in enumerate(test_loader):
+            origin_size = test_dataset.image_sizes[idx]
+            origin_size = origin_size.squeeze(1).to(device)
+
+            batch = y_class.shape[0]
+            x = x.to(device).float()
+            y_class = y_class.to(device)
+            y_class = (y_class == 2).squeeze(1).float()
+            y_bb = y_bb.to(device).float()
+            out_class, out_bb = model(x)
+
+            out_bb = torch.mul(out_bb, origin_size)
+            out_bb = xy_to_cxcy(out_bb)
+
+            y_bb = torch.mul(y_bb.squeeze(1), origin_size)
+            y_bb = xy_to_cxcy(y_bb)
+
+            # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
+            loss = loss_bb(out_bb, y_bb.squeeze(1))
+            loss += (loss_class(out_class, y_class))
+            total += batch
+            sum_loss += loss.item()
+            # _, pred = torch.max(out_class, 1)
+            pred = (out_class > 0.5).float()
+            # y_class = (y_class == 2).float().squeeze(1)
+            accuracy += pred.eq(y_class).sum().item()
+
+            tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
+                       zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
+            sum_iou += np.sum(tmp_iou)
+
+        test_loss = sum_loss / total
+        test_acc = accuracy / total
+        test_iou = sum_iou / total
+        print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (
+            epoch, test_iou, test_acc, test_loss))
+
+    return train_iou, train_acc, train_loss, test_iou, test_acc, test_loss
+
 
 def main():
     # Learning parameters
@@ -309,7 +417,7 @@ def main():
 
     model = Darknet53().to(device)
     parameters = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = torch.optim.Adam(parameters, lr=0.01)
+    optimizer = torch.optim.Adam(parameters, lr=0.015)
 
     train_dataset = mask_dataset(dataset='train')
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
@@ -330,6 +438,11 @@ def main():
                                               pin_memory=True)
 
     train_and_eval(model, device, optimizer, train_loader, train_dataset,test_loader,test_dataset, epochs=50)
+
+    , _,, real_lst, pred_lst = val_metrics(model, device, test_loader, test_dataset, C=1)
+    c_m = confusion_matrix(real_lst, pred_lst, labels=["Proper mask", "Not Proper mask"])
+    sns.heatmap(c_m, linewidths=.5, cmap="YlGnBu")
+    plt.show()
 
     # loss_list, iou_list, acc_list = list(), list(), list()
     # for i in range(50):
