@@ -8,9 +8,9 @@ from PIL import Image
 
 
 class mask_dataset(Dataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, path):
         super(mask_dataset, self).__init__()
-        self.path = f'/home/student/{dataset}'
+        self.path = path
         self.dataset = dataset
         self.image_id = os.listdir(self.path)
         self.image_sizes = list()
