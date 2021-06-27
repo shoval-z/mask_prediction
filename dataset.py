@@ -8,9 +8,9 @@ from PIL import Image
 
 
 class mask_dataset(Dataset):
-    def __init__(self, dataset):
+    def __init__(self, dataset, path):
         super(mask_dataset, self).__init__()
-        self.path = f'/home/student/{dataset}'
+        self.path = path
         self.dataset = dataset
         self.image_id = os.listdir(self.path)
         self.image_sizes = list()
@@ -19,17 +19,15 @@ class mask_dataset(Dataset):
             img_items = img.strip(".jpg").split('__')
             # if img_items[0] in ['009266','008710','004828'] and dataset == 'train':
             #     continue
-            cx, cy, w, h = json.loads(img_items[1])
+            x, y, w, h = json.loads(img_items[1])
             if (w <= 0 or h <= 0) and dataset == 'train':
                 continue
             image = Image.open(os.path.join(self.path, img)).convert('RGB')
             self.image_sizes.append(
                 torch.FloatTensor([image.width, image.height, image.width, image.height]).unsqueeze(0))
             label = [2] if img_items[2] == 'True' else [1]
-            bbox = [cx, cy, cx + w, cy + h]
-            # for idx, (b_item,img_dim) in enumerate(zip(bbox,[image.width, image.height, image.width, image.height])):
-            #     if b_item > img_dim:
-            #         bbox[idx] = img_dim
+            # bbox = [x, y, x + w, y + h]
+            bbox = [x, y, w, h]
             bbox = torch.FloatTensor(bbox)
             label = torch.LongTensor(label)
             if self.dataset == 'test':
@@ -42,16 +40,6 @@ class mask_dataset(Dataset):
             return transform(image.copy(), torch.clone(bbox), torch.clone(label), dataset='train')
         else:
             return self.items[index]
-        # img = self.image_id[index]
-        # img_items = img.strip(".jpg").split('__')
-        # cx,cy,w,h = json.loads(img_items[1])
-        # label = [2] if img_items[2] == 'True' else [1]
-        # image_tensor = Image.open(os.path.join(self.path, img)).convert('RGB')
-        # bbox = [cx, cy, cx + w, cy + h]
-        # bbox = torch.FloatTensor(bbox)
-        # labels = torch.LongTensor(label)
-        # image, bbox, labels = transform(image_tensor, bbox, labels)
-        # return image, bbox, labels
 
     def __len__(self):
         return len(self.items)

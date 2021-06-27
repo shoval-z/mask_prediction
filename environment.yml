@@ -2,8 +2,9 @@ name: hw2_env
 
 dependencies:
   - python=3.7
+  - pytorch=1.3.1
   - pytorch-gpu=1.3.1
-  - torchvision
+  - torchvision=0.4.2
   - pip
   - pip:
       - gdown
@@ -12,7 +13,6 @@ dependencies:
       - wandb
       - sklearn
       - seaborn
+      - scipy
       - opencv-python
-      - pytorch==1.3.1
-      - torchvision==0.4.2
-      - matplotlib==3.4.2
+      - matplotlib

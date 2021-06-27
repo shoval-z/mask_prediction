@@ -5,11 +5,12 @@ import torch.nn.functional as F
 from dataset import mask_dataset
 import numpy as np
 from utils import save_model
-from utils import xy_to_cxcy,calc_iou
+from utils import xy_to_cxcy, calc_iou
 import warnings
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
+
+# from sklearn.metrics import confusion_matrix
+# import seaborn as sns
+# import matplotlib.pyplot as plt
 
 warnings.filterwarnings("ignore", category=UserWarning)  # to ignore the .to(dtype=torch.uint8) warning message
 
@@ -41,7 +42,7 @@ class Darknet53(nn.Module):
         )
 
     def forward(self, image: torch.Tensor):
-        features = self.darknet53(image) # [batch size, 1024, 10, 10]
+        features = self.darknet53(image)  # [batch size, 1024, 10, 10]
         out = self.bbox(features).flatten(start_dim=1)
         classifier = out[:, 0]
         bbox = out[:, 1:]
@@ -67,72 +68,9 @@ class residual_block(nn.Module):
     def forward(self, x):
         return x + self.conv(x)
 
-
-def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1, init_epoch=0):
-    print('start training')
-    model.train()
-    loss_list, iou_list, acc_list = list(), list(), list()
-    loss_bb = torch.nn.L1Loss()
-    loss_class = torch.nn.BCELoss()
-    for i in range(epochs):
-        i += init_epoch
-        model.train()
-        total = 0
-        sum_loss = 0
-        sum_iou = 0
-        accuracy = 0
-        for idx, (x, y_bb, y_class) in enumerate(train_dl): #x = [batch_size, RGB, 300, 300]
-
-            origin_size = train_dataset.image_sizes[idx]
-            origin_size = origin_size.squeeze(1).to(device)
-
-            batch = y_class.shape[0]
-            x = x.to(device).float()
-            y_class = y_class.to(device)
-            y_class = (y_class == 2).squeeze(1).float()
-            y_bb = y_bb.to(device).float()
-            out_class, out_bb = model(x)
-
-            out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
-
-            y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
-
-            # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
-            loss = loss_bb(out_bb, y_bb.squeeze(1))
-            loss += 2*(loss_class(out_class, y_class))
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            total += batch
-            sum_loss += loss.item()
-            # _, pred = torch.max(out_class, 1)
-            pred = (out_class > 0.5).float()
-            # y_class = (y_class == 2).float().squeeze(1)
-            accuracy += pred.eq(y_class).sum().item()
-
-            tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
-                       zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
-            sum_iou += np.sum(tmp_iou)
-
-        print('saving model')
-        save_model(f'{i}_darknet53', model)
-
-        train_loss = sum_loss / total
-        train_acc = accuracy / total
-        train_iou = sum_iou / total
-        print("for epoch: %f \t train_iou %.3f,train_accuracy %.3f,train_loss %.3f  " % (
-            i, train_iou, train_acc, train_loss))
-        loss_list.append(train_loss)
-        iou_list.append(train_iou)
-        acc_list.append(train_acc)
-    return iou_list, acc_list, loss_list
-
-
-def val_metrics(model, device, valid_dl,test_dataset, C=1):
+def eval_only(model, device, test_loader, test_dataset, acc_loss_weight=1):
     print('strat eval')
-    pred_lst, real_lst = [],[]
+    pred_lst, real_lst = [], []
     model.eval()
     total = 0
     sum_loss = 0
@@ -141,7 +79,7 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1):
     loss_bb = torch.nn.L1Loss()
     loss_class = torch.nn.BCELoss()
     with torch.no_grad():
-        for idx,(x, y_bb, y_class) in enumerate(valid_dl):
+        for idx, (x, y_bb, y_class) in enumerate(test_loader):
             origin_size = test_dataset.image_sizes[idx]
             origin_size = origin_size.squeeze(1).to(device)
 
@@ -153,24 +91,16 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1):
             out_class, out_bb = model(x)
 
             out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
 
             y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
 
             loss = loss_bb(out_bb, y_bb.squeeze(1))
-            loss += 2*(loss_class(out_class, y_class))
-            # loss_bb = loss_bb.sum()
-            # loss = loss_class + loss_bb/C
-            # _, pred = torch.max(out_class, 1)
+            loss += acc_loss_weight * (loss_class(out_class, y_class))
+
             pred = (out_class > 0.5).float()
-            # pred = (pred == 2).float()
-            # y_class = (y_class == 2).float().squeeze(1)
             correct += pred.eq(y_class).sum().item()
             sum_loss += loss.item()
 
-            # y_bb = [b.to(device) for b in y_bb]
-            # y_class = [l.to(device) for l in y_class]
             real_lst.extend(y_class)
             pred_lst.extend(pred)
             tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
@@ -178,128 +108,12 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1):
             sum_iou += np.sum(tmp_iou)
 
             total += batch
-    return sum_iou/total, correct/total, sum_loss/total, real_lst, pred_lst
+    return sum_iou / total, correct / total, sum_loss / total, real_lst, pred_lst
 
-def train_and_eval(model, device, optimizer, train_loader, train_dataset,test_loader, test_dataset, epochs=50,):
+
+def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_dataset, test_loader, test_dataset, epoch,
+                                acc_loss_weight=1):
     print('start training')
-    model.train()
-    train_loss_list, train_iou_list, train_acc_list = list(), list(), list()
-    test_loss_list, test_iou_list, test_acc_list = list(), list(), list()
-    loss_bb = torch.nn.L1Loss()
-    loss_class = torch.nn.BCELoss()
-    for i in range(epochs):
-        model.train()
-        total = 0
-        sum_loss = 0
-        sum_iou = 0
-        accuracy = 0
-        for idx, (x, y_bb, y_class) in enumerate(train_loader): #x = [batch_size, RGB, 300, 300]
-
-            origin_size = train_dataset.image_sizes[idx]
-            origin_size = origin_size.squeeze(1).to(device)
-
-            batch = y_class.shape[0]
-            x = x.to(device).float()
-            y_class = y_class.to(device)
-            y_class = (y_class == 2).squeeze(1).float()
-            y_bb = y_bb.to(device).float()
-            out_class, out_bb = model(x)
-
-            out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
-
-            y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
-
-            # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
-            loss = loss_bb(out_bb, y_bb.squeeze(1))
-            loss += (loss_class(out_class, y_class))
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            total += batch
-            sum_loss += loss.item()
-            # _, pred = torch.max(out_class, 1)
-            pred = (out_class > 0.5).float()
-            # y_class = (y_class == 2).float().squeeze(1)
-            accuracy += pred.eq(y_class).sum().item()
-
-            tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
-                       zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
-            sum_iou += np.sum(tmp_iou)
-
-        print('saving model')
-        save_model(f'{i}_darknet53', model)
-
-        train_loss = sum_loss / total
-        train_acc = accuracy / total
-        train_iou = sum_iou / total
-        print("for epoch: %f \t train_iou %.3f,train_accuracy %.3f,train_loss %.3f  " % (
-            i, train_iou, train_acc, train_loss))
-        train_loss_list.append(train_loss)
-        train_iou_list.append(train_iou)
-        train_acc_list.append(train_acc)
-
-        ## eval
-        print('strat eval')
-        model.eval()
-        total = 0
-        sum_loss = 0
-        sum_iou = 0
-        accuracy = 0
-        loss_bb = torch.nn.L1Loss()
-        loss_class = torch.nn.BCELoss()
-        with torch.no_grad():
-            for idx, (x, y_bb, y_class) in enumerate(test_loader):
-                origin_size = test_dataset.image_sizes[idx]
-                origin_size = origin_size.squeeze(1).to(device)
-
-                batch = y_class.shape[0]
-                x = x.to(device).float()
-                y_class = y_class.to(device)
-                y_class = (y_class == 2).squeeze(1).float()
-                y_bb = y_bb.to(device).float()
-                out_class, out_bb = model(x)
-
-                out_bb = torch.mul(out_bb, origin_size)
-                out_bb = xy_to_cxcy(out_bb)
-
-                y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-                y_bb = xy_to_cxcy(y_bb)
-
-                # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
-                loss = loss_bb(out_bb, y_bb.squeeze(1))
-                loss += (loss_class(out_class, y_class))
-                total += batch
-                sum_loss += loss.item()
-                # _, pred = torch.max(out_class, 1)
-                pred = (out_class > 0.5).float()
-                # y_class = (y_class == 2).float().squeeze(1)
-                accuracy += pred.eq(y_class).sum().item()
-
-                tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
-                           zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
-                sum_iou += np.sum(tmp_iou)
-
-            test_loss = sum_loss / total
-            test_acc = accuracy / total
-            test_iou = sum_iou / total
-            print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (
-                i, test_iou, test_acc, test_loss))
-            test_loss_list.append(test_loss)
-            test_iou_list.append(test_iou)
-            test_acc_list.append(test_acc)
-
-        print('train_iou=', train_iou_list)
-        print('train_acc=', train_acc_list)
-        print('train_loss=', train_loss_list)
-        print('test_iou=', test_iou_list)
-        print('test_acc=', test_acc_list)
-        print('test_loss=', test_loss_list)
-
-def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_dataset,test_loader, test_dataset, epoch):
-    print('start training')
-    model.train()
     loss_bb = torch.nn.L1Loss()
     loss_class = torch.nn.BCELoss()
     model.train()
@@ -307,7 +121,7 @@ def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_da
     sum_loss = 0
     sum_iou = 0
     accuracy = 0
-    for idx, (x, y_bb, y_class) in enumerate(train_loader): #x = [batch_size, RGB, 300, 300]
+    for idx, (x, y_bb, y_class) in enumerate(train_loader):  # x = [batch_size, RGB, 300, 300]
 
         origin_size = train_dataset.image_sizes[idx]
         origin_size = origin_size.squeeze(1).to(device)
@@ -320,30 +134,24 @@ def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_da
         out_class, out_bb = model(x)
 
         out_bb = torch.mul(out_bb, origin_size)
-        out_bb = xy_to_cxcy(out_bb)
-
         y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-        y_bb = xy_to_cxcy(y_bb)
 
-        # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
         loss = loss_bb(out_bb, y_bb.squeeze(1))
-        loss += (loss_class(out_class, y_class))
+        loss += acc_loss_weight * (loss_class(out_class, y_class))
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
         total += batch
         sum_loss += loss.item()
-        # _, pred = torch.max(out_class, 1)
         pred = (out_class > 0.5).float()
-        # y_class = (y_class == 2).float().squeeze(1)
         accuracy += pred.eq(y_class).sum().item()
 
         tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
                    zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
         sum_iou += np.sum(tmp_iou)
 
-    print('saving model')
-    save_model(f'{epoch}_darknet53', model)
+    # print('saving model')
+    # save_model(f'{epoch}_darknet53', model)
 
     train_loss = sum_loss / total
     train_acc = accuracy / total
@@ -373,19 +181,14 @@ def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_da
             out_class, out_bb = model(x)
 
             out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
 
             y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
 
-            # loss_class = F.cross_entropy(out_class, y_class.squeeze(1), reduction="sum")
             loss = loss_bb(out_bb, y_bb.squeeze(1))
-            loss += (loss_class(out_class, y_class))
+            loss += acc_loss_weight * (loss_class(out_class, y_class))
             total += batch
             sum_loss += loss.item()
-            # _, pred = torch.max(out_class, 1)
             pred = (out_class > 0.5).float()
-            # y_class = (y_class == 2).float().squeeze(1)
             accuracy += pred.eq(y_class).sum().item()
 
             tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
@@ -398,12 +201,12 @@ def train_and_eval_single_epoch(model, device, optimizer, train_loader, train_da
         print("for epoch: %f \t test_iou %.3f,test_accuracy %.3f,test_loss %.3f  " % (
             epoch, test_iou, test_acc, test_loss))
 
-    return train_iou, train_acc, train_loss, test_iou, test_acc, test_loss
+    return train_iou, train_acc, train_loss, test_iou, test_acc, test_loss, model
 
 
 def main():
     # Learning parameters
-    batch_size = 32  # batch size
+    batch_size = 80  # batch size
     workers = 4
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # checkpoint = f'19_basic_model_checkpoint_ssd300.pth.tar'
@@ -419,30 +222,29 @@ def main():
     parameters = filter(lambda p: p.requires_grad, model.parameters())
     optimizer = torch.optim.Adam(parameters, lr=0.015)
 
-    train_dataset = mask_dataset(dataset='train')
+    train_dataset = mask_dataset(dataset='train', path=f'/home/student/train')
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=workers,
                                                pin_memory=True)
 
-
-    # iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset,
-    #                                             epochs=50, C=1, init_epoch=0)
+    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset,
+                                                epochs=50, C=1, init_epoch=0)
     # print('train_iou=', iou_list)
     # print('train_accuracy=', acc_list)
     # print('train_loss=', loss_list)
     # del train_loader, train_dataset
 
-    test_dataset = mask_dataset(dataset='test')
+    test_dataset = mask_dataset(dataset='test', path=f'/home/student/test')
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                                               num_workers=workers,
                                               pin_memory=True)
 
-    train_and_eval(model, device, optimizer, train_loader, train_dataset,test_loader,test_dataset, epochs=50)
+    train_and_eval(model, device, optimizer, train_loader, train_dataset, test_loader, test_dataset, epochs=50)
 
-    , _,, real_lst, pred_lst = val_metrics(model, device, test_loader, test_dataset, C=1)
-    c_m = confusion_matrix(real_lst, pred_lst, labels=["Proper mask", "Not Proper mask"])
-    sns.heatmap(c_m, linewidths=.5, cmap="YlGnBu")
-    plt.show()
+    _, _, _, real_lst, pred_lst = val_metrics(model, device, test_loader, test_dataset, C=1)
+    # c_m = confusion_matrix(real_lst, pred_lst, labels=["Proper mask", "Not Proper mask"])
+    # sns.heatmap(c_m, linewidths=.5, cmap="YlGnBu")
+    # plt.show()
 
     # loss_list, iou_list, acc_list = list(), list(), list()
     # for i in range(50):
@@ -465,8 +267,5 @@ def main():
     # print('test_loss=', loss_list)
 
 
-
-
 if __name__ == '__main__':
     main()
-

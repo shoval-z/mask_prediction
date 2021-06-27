@@ -16,21 +16,16 @@ class BB_model(nn.Module):
     def __init__(self):
         super(BB_model, self).__init__()
         resnet = models.resnet34(pretrained=False)
-        # resnet = models.resnet18(pretrained=False)
-        # resnet50 = models.resnet50(pretrained=False)
-        # resnet152 = models.resnet152(pretrained=False)
         layers = list(resnet.children())[:8]
-        # layers = list(resnet50.children())[:8]
         self.features1 = nn.Sequential(*layers[:6])
         self.features2 = nn.Sequential(*layers[6:])
         self.classifier = nn.Sequential(nn.BatchNorm1d(512), nn.Linear(512, 3))
         self.bb = nn.Sequential(nn.BatchNorm1d(512), nn.Linear(512, 4))
-        # self.classifier = nn.Sequential(nn.BatchNorm1d(2048), nn.Linear(2048, 3))
-        # self.bb = nn.Sequential(nn.BatchNorm1d(2048), nn.Linear(2048, 4))
+
 
     def forward(self, x):
-        x = self.features1(x) # x =[batch_size, 128, 38, 38]  # x =[batch_size, 512, 38, 38]
-        x = self.features2(x) #x = [batch_size, 512, 10, 10]  # x = [batch_size, 2048, 10, 10]
+        x = self.features1(x) # x =[batch_size, 128, 38, 38]
+        x = self.features2(x) # x = [batch_size, 512, 10, 10]
         x = F.relu(x)
         x = nn.AdaptiveAvgPool2d((1, 1))(x) # x=[batch_size, 512, 1, 1]
         x = x.view(x.shape[0], -1) #x = [batch_size, 512]
@@ -67,10 +62,8 @@ def val_metrics(model, device, valid_dl,test_dataset, C=1):
         origin_size = origin_size.squeeze(1).to(device)
 
         out_bb = torch.mul(out_bb, origin_size)
-        out_bb = xy_to_cxcy(out_bb)
 
         y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-        y_bb = xy_to_cxcy(y_bb)
 
         tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
                    zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
@@ -114,10 +107,8 @@ def train_epocs(model,device, optimizer, train_dl, train_dataset, epochs, C=1, i
             origin_size = origin_size.squeeze(1).to(device)
 
             out_bb = torch.mul(out_bb, origin_size)
-            out_bb = xy_to_cxcy(out_bb)
 
             y_bb = torch.mul(y_bb.squeeze(1), origin_size)
-            y_bb = xy_to_cxcy(y_bb)
 
             tmp_iou = [calc_iou(det_b, true_b) for det_b, true_b in
                        zip(out_bb.cpu().detach().numpy(), y_bb.squeeze(1).cpu().detach().numpy())]
@@ -142,7 +133,7 @@ def update_optimizer(optimizer, lr):
 
 def main():
     # Learning parameters
-    batch_size = 16  # batch size
+    batch_size = 32  # batch size
     workers = 4
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # checkpoint = f'19_basic_model_checkpoint_ssd300.pth.tar'
@@ -154,28 +145,28 @@ def main():
     # optimizer = torch.optim.Adam(parameters, lr=0.006)
     # optimizer.load_state_dict(checkpoint['optimizer'])
 
-    # model = BB_model().to(device)
-    # parameters = filter(lambda p: p.requires_grad, model.parameters())
-    # optimizer = torch.optim.Adam(parameters, lr=0.001)
-    #
-    # train_dataset = mask_dataset(dataset='train')
-    # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-    #                                            num_workers=workers,
-    #                                            pin_memory=True)
-    #
-    # iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=40, C=1,init_epoch=0)
-    # print('train_iou=', iou_list)
-    # print('train_accuracy=', acc_list)
-    # print('train_loss=', loss_list)
-    # del train_loader, train_dataset
+    model = BB_model().to(device)
+    parameters = filter(lambda p: p.requires_grad, model.parameters())
+    optimizer = torch.optim.Adam(parameters, lr=0.01)
 
-    test_dataset = mask_dataset(dataset='test')
+    train_dataset = mask_dataset(dataset='train', path=f'/home/student/train')
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                                               num_workers=workers,
+                                               pin_memory=True)
+
+    iou_list, acc_list, loss_list = train_epocs(model, device, optimizer, train_loader, train_dataset=train_dataset, epochs=30, C=1,init_epoch=0)
+    print('train_iou=', iou_list)
+    print('train_accuracy=', acc_list)
+    print('train_loss=', loss_list)
+    del train_loader, train_dataset
+
+    test_dataset = mask_dataset(dataset='test', path=f'/home/student/test')
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,
                                                num_workers=workers,
                                                pin_memory=True)
 
     loss_list, iou_list, acc_list = list(), list(), list()
-    for i in range(20,30):
+    for i in range(30):
         # checkpoint = f'{i}__basic_model_new_mean_std_checkpoint_ssd300.pth.tar'
         checkpoint = f'{i}_basic_model_checkpoint_ssd300.pth.tar'
         # checkpoint = torch.load(checkpoint)
